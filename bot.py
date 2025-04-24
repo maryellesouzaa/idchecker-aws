@@ -20,7 +20,7 @@ ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
-    print(f"Recebido: {text}")  # ADICIONE ISSO
+    print(f"Recebido: {text}")  # ADICIONE ISSO para depuração
 
     # Extraímos os códigos que correspondem ao padrão
     ids = re.findall(ID_REGEX, text)
@@ -33,14 +33,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     resposta = []
 
     for codigo in ids:
-        cursor.execute("SELECT 1 FROM produtos WHERE codigo = %s", (codigo,))
-        if cursor.fetchone():
-            resposta.append(f"⚠️ ID já existente: {codigo}")
-        else:
-            cursor.execute("INSERT INTO produtos (codigo) VALUES (%s)", (codigo,))
-            conn.commit()
-            resposta.append(f"✅ Novo ID registrado: {codigo}")
+        try:
+            # Verificar se o código já existe
+            cursor.execute("SELECT 1 FROM produtos WHERE codigo = %s", (codigo,))
+            if cursor.fetchone():
+                resposta.append(f"⚠️ ID já existente: {codigo}")
+            else:
+                cursor.execute("INSERT INTO produtos (codigo) VALUES (%s)", (codigo,))
+                conn.commit()
+                resposta.append(f"✅ Novo ID registrado: {codigo}")
+        except psycopg2.errors.UniqueViolation:
+            # Erro de duplicação de chave única
+            conn.rollback()  # Reverte a transação
+            resposta.append(f"⚠️ ID já existe: {codigo}")
+        except Exception as e:
+            # Captura qualquer outro erro
+            conn.rollback()  # Reverte a transação
+            resposta.append(f"Erro ao tentar inserir o código {codigo}: {str(e)}")
 
+    # Envia resposta ao usuário
     await update.message.reply_text("\n".join(resposta))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
