@@ -4,14 +4,15 @@ import psycopg2
 import re
 import os
 
+# Usa variável de ambiente DATABASE_URL (recomendado)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Se não tiver variável, usa a URL fixa
+if not DATABASE_URL:
+    DATABASE_URL = "postgresql://postgres:kdImioIBvRjkdyKNHdyTSBTUCJXIpCdy@caboose.proxy.rlwy.net:39812/railway"
+
 # Conexão com o banco
-conn = psycopg2.connect(
-    dbname="idchecker",
-    user="postgres",
-    password="1234",
-    host="localhost",
-    port="5432"
-)
+conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
 
 # Regex para capturar códigos tipo AAA-BBB-CCC
@@ -51,3 +52,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
