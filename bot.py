@@ -9,20 +9,25 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Se não tiver variável, usa a URL fixa
 if not DATABASE_URL:
-    DATABASE_URL = "postgresql://postgres:kdImioIBvRjkdyKNHdyTSBTUCJXIpCdy@caboose.proxy.rlwy.net:39812/railway"
+    DATABASE_URL = "postgresql://postgres:xYqoSUrBXewIYTfQkNYzsbIwJeRsMyKd@interchange.proxy.rlwy.net:19437/railway"
 
 # Conexão com o banco
 conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
 
-# Regex para capturar códigos tipo AAA-BBB-CCC
-ID_REGEX = r'\b[A-Z]{3}-[A-Z]{3}-[A-Z]{3}\b'
+# Regex para capturar códigos tipo AAA-BBB-CCC, permitindo números
+ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
+    print(f"Recebido: {text}")  # ADICIONE ISSO
+
+    # Extraímos os códigos que correspondem ao padrão
     ids = re.findall(ID_REGEX, text)
+    print(f"IDs extraídos: {ids}")  # ADICIONE ISSO para depuração
 
     if not ids:
+        await update.message.reply_text("Nenhum ID válido encontrado.")
         return
 
     resposta = []
@@ -52,4 +57,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
