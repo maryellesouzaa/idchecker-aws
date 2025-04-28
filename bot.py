@@ -4,12 +4,15 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import psycopg2
 import re
+from psycopg2 import errors
 
 # Carrega as variáveis do arquivo .env
 load_dotenv()
 
 # Recupera o token a partir da variável de ambiente
 token = os.getenv('BOT_TOKEN')
+if not token:
+    print("Erro: O token do bot não foi carregado corretamente.")
 
 # Usa variável de ambiente DATABASE_URL (recomendado)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -21,9 +24,11 @@ if not DATABASE_URL:
 # Regex para capturar códigos tipo AAA-BBB-CCC, permitindo números
 ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
 
-# Função para obter conexão com o banco de dados
+# Função para obter conexão com o banco de dados (mantém conexão persistente)
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+    if not hasattr(get_db_connection, "conn"):
+        get_db_connection.conn = psycopg2.connect(DATABASE_URL)  # Cria a conexão apenas uma vez
+    return get_db_connection.conn
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
@@ -57,9 +62,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resposta.append(f"✅ {nome_usuario}, novo ID registrado com sucesso: {codigo}")
 
             cursor.close()
-            conn.close()
 
-        except psycopg2.errors.UniqueViolation:
+        except errors.UniqueViolation:
             resposta.append(f"⚠️ {nome_usuario}, o ID {codigo} já existe! 🔗 Link: [desconhecido]")
 
         except Exception as e:
@@ -83,7 +87,6 @@ async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"📊 Atualmente existem {total} IDs registrados no banco de dados!")
 
         cursor.close()
-        conn.close()
 
     except Exception as e:
         print(f"Erro ao contar IDs: {str(e)}")
@@ -112,7 +115,6 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Código {codigo} não encontrado no banco de dados.")
 
         cursor.close()
-        conn.close()
 
     except Exception as e:
         print(f"Erro ao adicionar link: {str(e)}")
