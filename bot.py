@@ -1,8 +1,15 @@
+from dotenv import load_dotenv
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import psycopg2
 import re
-import os
+
+# Carrega as variáveis do arquivo .env
+load_dotenv()
+
+# Recupera o token a partir da variável de ambiente
+token = os.getenv('BOT_TOKEN')
 
 # Usa variável de ambiente DATABASE_URL (recomendado)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -49,7 +56,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
             resposta.append(f"⚠️ {nome_usuario}, o ID {codigo} já existe! 🔗 Link: [desconhecido]")
-        
+
         except Exception as e:
             conn.rollback()
             print(f"Erro ao tentar processar o código {codigo}: {str(e)}")
@@ -96,7 +103,7 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ocorreu um erro ao adicionar o link.")
 
 def main():
-    app = ApplicationBuilder().token("7680606076:AAFVfNAKU-jP_pWb9ZGuvL1DoRu8vYMPS48").build()
+    app = ApplicationBuilder().token(token).build()  # Usa o token carregado do .env
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("quantos", quantos))
