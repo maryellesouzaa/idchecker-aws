@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from datetime import datetime
 import psycopg2
 import re
 
