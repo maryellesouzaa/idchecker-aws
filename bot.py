@@ -113,6 +113,7 @@ async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resposta = "🕒 Fila de IDs pendentes:\n\n"
         for idx, (codigo,) in enumerate(ids_pendentes, start=1):
             resposta += f"{idx}. 🆔 {codigo}\n"
+        resposta += "\n⏳ Aguarde a geração dos links!"
         await update.message.reply_text(resposta)
 
     cursor.close()
