@@ -5,11 +5,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import psycopg2
 import re
 
+# Carrega as variáveis de ambiente
 load_dotenv()
 
 token = os.getenv('BOT_TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL')
 
+# Fallback se a variável de ambiente não existir
 if not DATABASE_URL:
     DATABASE_URL = "postgresql://postgres:xYqoSUrBXewIYTfQkNYzsbIwJeRsMyKd@interchange.proxy.rlwy.net:19437/railway"
 
@@ -38,14 +40,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor = conn.cursor()
 
     for codigo in ids:
-        cursor.execute("SELECT id FROM produto WHERE codigo = %s", (codigo,))
-        if cursor.fetchone():
+        cursor.execute("SELECT link, user_name FROM produto WHERE codigo = %s", (codigo,))
+        resultado = cursor.fetchone()
+        if resultado:
+            link_existente, user_name_existente = resultado
+            resposta = f"⚠️ {user_name_existente}, o ID {codigo} já existe!"
+            if link_existente:
+                resposta += f"\n🔗 Link associado: {link_existente}"
+            else:
+                resposta += "\n🔗 Nenhum link foi associado ainda."
+            await update.message.reply_text(resposta)
             continue
 
         cursor.execute(
-            "INSERT INTO produto (codigo, user_id, user_name, message_id, chat_id) VALUES (%s, %s, %s, %s, %s)",
-            (codigo, user_id, user_name, message_id, chat_id)
-        )
+   	"INSERT INTO produto (codigo, user_id, user_name, message_id, chat_id, data_pedido) VALUES (%s, %s, %s, %s, %s, %s)",
+    	(codigo, user_id, user_name, message_id, chat_id, datetime.now().date())
+)
         conn.commit()
 
         await update.message.reply_text(f"✅ ID {codigo} adicionado à fila. Avisarei quando o link estiver disponível.")
@@ -53,7 +63,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.close()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produto no formato AAA-BBB-CCC.")
+    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.")
 
 async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
@@ -148,7 +158,7 @@ async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for idx, (codigo, data_pedido, link) in enumerate(historico, start=1):
             resposta += (
                 f"{idx}. 🆔 {codigo}\n"
-                f"🕒 {data_pedido.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"🕒 {data_pedido.strftime('%Y-%m-%d')}\n"
                 f"🔗 {link}\n\n"
             )
         await update.message.reply_text(resposta)
