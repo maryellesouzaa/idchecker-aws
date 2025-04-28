@@ -31,7 +31,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ids = re.findall(ID_REGEX, text)
 
     if not ids:
-        await update.message.reply_text("❌ Nenhum ID válido encontrado. Por favor, envie no formato AAA-BBB-CCC.")
         return
 
     resposta = []
