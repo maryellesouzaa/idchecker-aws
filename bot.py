@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 import os
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import psycopg2
 import re
 
@@ -18,12 +18,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     DATABASE_URL = "postgresql://postgres:xYqoSUrBXewIYTfQkNYzsbIwJeRsMyKd@interchange.proxy.rlwy.net:19437/railway"
 
-# Conexão com o banco
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
-
 # Regex para capturar códigos tipo AAA-BBB-CCC, permitindo números
 ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
+
+# Função para obter conexão com o banco de dados
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
@@ -42,6 +42,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for codigo in ids:
         try:
+            conn = get_db_connection()  # Conectar ao banco
+            cursor = conn.cursor()
+            
             cursor.execute("SELECT link FROM produtos WHERE codigo = %s", (codigo,))
             resultado = cursor.fetchone()
 
@@ -53,12 +56,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
                 resposta.append(f"✅ {nome_usuario}, novo ID registrado com sucesso: {codigo}")
 
+            cursor.close()
+            conn.close()
+
         except psycopg2.errors.UniqueViolation:
-            conn.rollback()
             resposta.append(f"⚠️ {nome_usuario}, o ID {codigo} já existe! 🔗 Link: [desconhecido]")
 
         except Exception as e:
-            conn.rollback()
             print(f"Erro ao tentar processar o código {codigo}: {str(e)}")
             resposta.append(f"❌ Erro ao tentar inserir o código {codigo}. Por favor, tente novamente.")
 
@@ -71,9 +75,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /quantos
 async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        conn = get_db_connection()  # Conectar ao banco
+        cursor = conn.cursor()
+        
         cursor.execute("SELECT COUNT(*) FROM produtos;")
         total = cursor.fetchone()[0]
         await update.message.reply_text(f"📊 Atualmente existem {total} IDs registrados no banco de dados!")
+
+        cursor.close()
+        conn.close()
+
     except Exception as e:
         print(f"Erro ao contar IDs: {str(e)}")
         await update.message.reply_text("❌ Ocorreu um erro ao contar os IDs.")
@@ -89,6 +100,9 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         codigo = args[0].upper()
         link = ' '.join(args[1:])
 
+        conn = get_db_connection()  # Conectar ao banco
+        cursor = conn.cursor()
+
         cursor.execute("SELECT 1 FROM produtos WHERE codigo = %s", (codigo,))
         if cursor.fetchone():
             cursor.execute("UPDATE produtos SET link = %s WHERE codigo = %s", (link, codigo))
@@ -97,13 +111,16 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"❌ Código {codigo} não encontrado no banco de dados.")
 
+        cursor.close()
+        conn.close()
+
     except Exception as e:
-        conn.rollback()
         print(f"Erro ao adicionar link: {str(e)}")
         await update.message.reply_text("❌ Ocorreu um erro ao adicionar o link.")
 
 def main():
-    app = ApplicationBuilder().token(token).build()  # Usa o token carregado do .env
+    # Instância do aplicativo com o novo método
+    app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("quantos", quantos))
