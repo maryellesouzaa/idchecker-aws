@@ -26,6 +26,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     user_name = user.first_name
+    message_id = update.message.message_id
+    chat_id = update.message.chat_id
 
     ids = re.findall(ID_REGEX, text)
 
@@ -36,13 +38,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor = conn.cursor()
 
     for codigo in ids:
-        cursor.execute("SELECT id FROM produtos WHERE codigo = %s", (codigo,))
+        cursor.execute("SELECT id FROM produto WHERE codigo = %s", (codigo,))
         if cursor.fetchone():
             continue
 
         cursor.execute(
-            "INSERT INTO produtos (codigo, user_id, user_name) VALUES (%s, %s, %s)",
-            (codigo, user_id, user_name)
+            "INSERT INTO produto (codigo, user_id, user_name, message_id, chat_id) VALUES (%s, %s, %s, %s, %s)",
+            (codigo, user_id, user_name, message_id, chat_id)
         )
         conn.commit()
 
@@ -51,13 +53,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.close()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.")
+    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produto no formato AAA-BBB-CCC.")
 
 async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM produtos;")
+    cursor.execute("SELECT COUNT(*) FROM produto;")
     total = cursor.fetchone()[0]
 
     await update.message.reply_text(f"📊 Atualmente existem {total} IDs registrados no banco de dados!")
@@ -82,19 +84,29 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT user_name, user_id FROM produtos WHERE codigo = %s", (codigo,))
+    cursor.execute("SELECT user_name, user_id, message_id, chat_id FROM produto WHERE codigo = %s", (codigo,))
     result = cursor.fetchone()
 
     if result:
-        user_name, user_id = result
-        cursor.execute("UPDATE produtos SET link = %s WHERE codigo = %s", (link, codigo))
+        user_name, user_id, message_id, chat_id = result
+        cursor.execute("UPDATE produto SET link = %s WHERE codigo = %s", (link, codigo))
         conn.commit()
 
-        await update.message.reply_text(
-            f"✅ Link atualizado para {codigo}!\n"
-            f"👤 Pedido de: {user_name} ({user_id})\n"
-            f"🔗 Link: {link}"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"✅ Link atualizado para {codigo}!\n"
+                    f"👤 Pedido de: {user_name} ({user_id})\n"
+                    f"🔗 Link: {link}"
+                ),
+                reply_to_message_id=message_id
+            )
+        except Exception as e:
+            await update.message.reply_text("⚠️ Não consegui responder à mensagem original, mas o link foi atualizado.")
+
+        await update.message.reply_text(f"✅ Link atualizado para o ID {codigo}!")
+
     else:
         await update.message.reply_text(f"❌ Código {codigo} não encontrado.")
 
@@ -104,7 +116,7 @@ async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT codigo FROM produtos WHERE link IS NULL ORDER BY data_pedido ASC")
+    cursor.execute("SELECT codigo FROM produto WHERE link IS NULL ORDER BY data_pedido ASC")
     ids_pendentes = cursor.fetchall()
 
     if not ids_pendentes:
@@ -124,7 +136,7 @@ async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT codigo, data_pedido, link FROM produtos WHERE user_id = %s AND link IS NOT NULL ORDER BY data_pedido ASC",
+        "SELECT codigo, data_pedido, link FROM produto WHERE user_id = %s AND link IS NOT NULL ORDER BY data_pedido ASC",
         (user.id,)
     )
     historico = cursor.fetchall()
