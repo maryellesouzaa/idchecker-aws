@@ -1,3 +1,4 @@
+
 from dotenv import load_dotenv
 import os
 from telegram import Update
@@ -5,6 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from datetime import datetime
 import psycopg2
 import re
+from telegram.constants import ParseMode
 
 # Carrega as variáveis de ambiente
 load_dotenv()
@@ -18,6 +20,7 @@ if not DATABASE_URL:
 
 ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
 ADMINS = [2132935211, 6294708048]
+CANAL_ID = -1002563145936  # ID do canal para onde vão os alertas
 
 def get_db_connection():
     if not hasattr(get_db_connection, "conn"):
@@ -54,12 +57,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
 
         cursor.execute(
-   	"INSERT INTO produto (codigo, user_id, user_name, message_id, chat_id, data_pedido) VALUES (%s, %s, %s, %s, %s, %s)",
-    	(codigo, user_id, user_name, message_id, chat_id, datetime.now().date())
-)
+            "INSERT INTO produto (codigo, user_id, user_name, message_id, chat_id, data_pedido) VALUES (%s, %s, %s, %s, %s, %s)",
+            (codigo, user_id, user_name, message_id, chat_id, datetime.now().date())
+        )
         conn.commit()
 
         await update.message.reply_text(f"✅ ID {codigo} adicionado à fila. Avisarei quando o link estiver disponível.")
+
+        # Envia mensagem ao canal com o novo pedido
+        link_msg = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}" if str(chat_id).startswith("-100") else None
+        mensagem = (
+            f"📨 <b>Novo pedido de ID</b>\n"
+            f"👤 <b>Usuário:</b> {user_name} (ID: <code>{user_id}</code>)\n"
+            f"🆔 <b>Pedido:</b> <code>{codigo}</code>\n"
+        )
+        if link_msg:
+            mensagem += f"🔗 <a href='{link_msg}'>Ver mensagem</a>"
+
+        await context.bot.send_message(chat_id=CANAL_ID, text=mensagem, parse_mode=ParseMode.HTML)
 
     cursor.close()
 
@@ -166,6 +181,24 @@ async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
+# NOVO COMANDO /limpar
+async def limpar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if user.id not in ADMINS:
+        await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
+        return
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM produto WHERE link IS NULL")
+    deletados = cursor.rowcount
+    conn.commit()
+
+    await update.message.reply_text(f"🧹 {deletados} IDs pendentes foram removidos com sucesso.")
+    cursor.close()
+
+# ... [main com nova linha adicionada para o handler do /limpar] ...
 def main():
     app = Application.builder().token(token).build()
 
@@ -174,6 +207,7 @@ def main():
     app.add_handler(CommandHandler("addlink", addlink))
     app.add_handler(CommandHandler("fila", fila))
     app.add_handler(CommandHandler("historico", historico))
+    app.add_handler(CommandHandler("limpar", limpar))  # 👈 Adiciona o novo comando
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling()
