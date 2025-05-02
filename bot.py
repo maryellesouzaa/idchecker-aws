@@ -77,13 +77,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.close()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.\n"
-                                    "Comandos de ajuda:\n"
-                                    "/quantos - Ver total de IDs registrados\n"
-                                    "/addlink CÓDIGO LINK - Adicionar link ao código\n"
-                                    "/fila - Ver IDs pendentes\n"
-                                    "/historico - Ver seu histórico de pedidos\n"
-                                    "Nos apoie seguindo o canal: https://t.me/cupomnavitrine")
+    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.\n")
 
 async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
