@@ -22,12 +22,10 @@ SENHA_ADMIN = "0809"
 USUARIOS_ADMIN_TEMP = set()
 CODIGO, MOTIVO = range(2)
 
-
 def get_db_connection():
     if not hasattr(get_db_connection, "conn"):
         get_db_connection.conn = psycopg2.connect(DATABASE_URL)
     return get_db_connection.conn
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
@@ -78,10 +76,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.")
-
+    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.\n"
+                                    "Comandos de ajuda:\n"
+                                    "/quantos - Ver total de IDs registrados\n"
+                                    "/addlink CÓDIGO LINK - Adicionar link ao código\n"
+                                    "/fila - Ver IDs pendentes\n"
+                                    "/historico - Ver seu histórico de pedidos\n"
+                                    "Nos apoie seguindo o canal: https://t.me/cupomnavitrine")
 
 async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
@@ -93,7 +95,6 @@ async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = cursor.fetchone()[0]
     await update.message.reply_text(f"📊 Atualmente existem {total} IDs registrados no banco de dados!")
     cursor.close()
-
 
 async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
@@ -120,11 +121,9 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=(
-                    f"✅ Link atualizado para {codigo}!\n"
-                    f"👤 Pedido de: {user_name} ({user_id})\n"
-                    f"🔗 Link: {link}"
-                ),
+                text=(f"✅ Link atualizado para {codigo}!\n"
+                      f"👤 Pedido de: {user_name} ({user_id})\n"
+                      f"🔗 Link: {link}"),
                 reply_to_message_id=message_id
             )
         except:
@@ -134,7 +133,6 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Código {codigo} não encontrado.")
 
     cursor.close()
-
 
 async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
@@ -153,6 +151,27 @@ async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
+async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_name, codigo, data_pedido, link FROM produto WHERE user_id = %s ORDER BY data_pedido ASC", (user_id,))
+    historico = cursor.fetchall()
+
+    if not historico:
+        await update.message.reply_text("📚 Nenhum histórico encontrado.")
+    else:
+        resposta = "📚 Seu histórico de pedidos:\n\n"
+        for idx, (user_name, codigo, data_pedido, link) in enumerate(historico, start=1):
+            resposta += (
+                f"{idx}. 👤 {user_name}\n"
+                f"🆔 {codigo}\n"
+                f"🕒 {data_pedido.strftime('%Y-%m-%d')}\n"
+                f"🔗 {link}\n\n"
+            )
+        await update.message.reply_text(resposta)
+
+    cursor.close()
 
 async def historicoids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
@@ -178,24 +197,9 @@ async def historicoids(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
-
-async def limpar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
-        await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
-        return
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM produto WHERE link IS NULL")
-    deletados = cursor.rowcount
-    conn.commit()
-    await update.message.reply_text(f"🧹 {deletados} IDs pendentes foram removidos com sucesso.")
-    cursor.close()
-
-
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1 or context.args[0] != SENHA_ADMIN:
-        await update.message.reply_text("❌ Senha incorreta. Tente: /admin 0809")
+        await update.message.reply_text("❌ Senha incorreta.")
         return
 
     user_id = update.effective_user.id
@@ -205,75 +209,9 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Comandos disponíveis:\n"
         "/quantos - Ver total de IDs registrados\n"
         "/addlink CÓDIGO LINK - Adicionar link ao código\n"
-        "/limpar - Remover todos os IDs pendentes\n"
+        "/fila - Ver IDs pendentes\n"
         "/historicoids - Ver histórico de todos os IDs"
     )
-
-
-async def relatarerro_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🆔 Envie o CÓDIGO com erro:")
-    return CODIGO
-
-
-async def relatarerro_codigo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['codigo'] = update.message.text.strip().upper()
-    await update.message.reply_text("📝 Agora informe o motivo do erro em uma única linha:")
-    return MOTIVO
-
-
-async def relatarerro_motivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    motivo = update.message.text.strip()
-    codigo = context.user_data['codigo']
-    user = update.effective_user
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT link FROM produto WHERE codigo = %s", (codigo,))
-    result = cursor.fetchone()
-    link = result[0] if result and result[0] else "Nenhum"
-
-    mensagem = (
-        f"📨 Erro Relatado\n"
-        f"👤 Usuário: {user.first_name} (ID: {user.id})\n"
-        f"🆔 Pedido: {codigo}\n"
-        f"🔗 {link}\n"
-        f"📝 Motivo: {motivo}"
-    )
-
-    await context.bot.send_message(chat_id=CANAL_ID, text=mensagem)
-    await update.message.reply_text("✅ Seu relatório foi enviado com sucesso.")
-    return ConversationHandler.END
-
-
-async def relatarerro_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Relato cancelado.")
-    return ConversationHandler.END
-
-
-async def reclamar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT codigo, message_id, chat_id FROM produto WHERE user_id = %s ORDER BY data_pedido DESC LIMIT 1", (user_id,))
-    result = cursor.fetchone()
-
-    if result:
-        codigo, message_id, chat_id = result
-        link_msg = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}" if str(chat_id).startswith("-100") else "(mensagem não encontrada)"
-        mensagem = (
-            f"📨 Pedido Reenviado\n"
-            f"👤 Usuário: {user.first_name} (ID: <code>{user.id}</code>)\n"
-            f"🆔 Pedido: <code>{codigo}</code>\n"
-            f"🔗 <a href='{link_msg}'>Ver mensagem</a>"
-        )
-        await context.bot.send_message(chat_id=CANAL_ID, text=mensagem, parse_mode=ParseMode.HTML)
-        await update.message.reply_text("✅ Seu pedido foi reenviado ao canal.")
-    else:
-        await update.message.reply_text("❌ Nenhum pedido encontrado para reenviar.")
-
-    cursor.close()
-
 
 def main():
     app = Application.builder().token(token).build()
@@ -282,23 +220,9 @@ def main():
     app.add_handler(CommandHandler("quantos", quantos))
     app.add_handler(CommandHandler("addlink", addlink))
     app.add_handler(CommandHandler("fila", fila))
-    app.add_handler(CommandHandler("limpar", limpar))
+    app.add_handler(CommandHandler("historico", historico))
     app.add_handler(CommandHandler("historicoids", historicoids))
     app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("reclamar", reclamar))
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("relatarerro", relatarerro_inicio)],
-        states={
-            CODIGO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_codigo)],
-            MOTIVO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_motivo)]
-        },
-        fallbacks=[CommandHandler("cancelar", relatarerro_cancel)],
-        conversation_timeout=120
-    )
-    app.add_handler(conv_handler)
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling()
 
