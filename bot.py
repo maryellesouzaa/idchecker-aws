@@ -68,7 +68,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         conn.commit()
 
-        await update.message.reply_text(f"✅ ID {codigo} adicionado à fila. Avisarei quando o link estiver disponível.")
+        await update.message.reply_text(
+  	    f"✅ ID {codigo} adicionado à fila. Avisarei quando o link estiver disponível.\n\n"
+   	    "⏳ O tempo de resposta pode variar dependendo do horário, mas em breve sua solicitação será respondida!"
+	)
 
         link_msg = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}" if str(chat_id).startswith("-100") else None
         mensagem = (
