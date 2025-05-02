@@ -3,7 +3,7 @@ import os
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    filters, ContextTypes
+    filters, ContextTypes, ConversationHandler
 )
 from datetime import datetime
 import psycopg2
@@ -22,6 +22,8 @@ ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
 USUARIOS_ADMIN_TEMP = set()
 CANAL_ID = -1002563145936
 SENHA_ADMIN = "0809"
+
+RELATAR_CODIGO, RELATAR_MOTIVO = range(2)
 
 # Conexão única reutilizável
 def get_db_connection():
@@ -69,9 +71,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
 
         await update.message.reply_text(
-  	    f"✅ ID {codigo} adicionado à fila. Avisarei quando o link estiver disponível.\n\n"
-   	    "⏳ O tempo de resposta pode variar dependendo do horário, mas em breve sua solicitação será respondida!"
-	)
+            f"✅ ID {codigo} adicionado à fila. Avisarei quando o link estiver disponível.\n\n"
+            "⏳ O tempo de resposta pode variar dependendo do horário, mas em breve sua solicitação será respondida!"
+        )
 
         link_msg = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}" if str(chat_id).startswith("-100") else None
         mensagem = (
@@ -101,7 +103,8 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/quantos - Ver total de IDs registrados\n"
         "/addlink CÓDIGO LINK - Adicionar link ao código\n"
         "/fila - Ver IDs pendentes\n"
-        "/historicoids - Ver histórico de todos os IDs"
+        "/historicoids - Ver histórico de todos os IDs\n"
+        "/relatarerro - Relatar erro em um ID"
     )
 
 # Comando /quantos
@@ -221,6 +224,36 @@ async def historicoids(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
+# Comando /relatarerro
+async def relatarerro_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🆔 Informe o código do ID com problema:")
+    return RELATAR_CODIGO
+
+async def relatarerro_codigo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["codigo_erro"] = update.message.text.strip().upper()
+    await update.message.reply_text("❓ Qual o motivo do erro?")
+    return RELATAR_MOTIVO
+
+async def relatarerro_motivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    motivo = update.message.text.strip()
+    codigo = context.user_data["codigo_erro"]
+    user = update.effective_user
+
+    mensagem = (
+        f"⚠️ <b>Erro relatado</b>\n"
+        f"👤 <b>Usuário:</b> {user.first_name} (ID: <code>{user.id}</code>)\n"
+        f"🆔 <b>Código:</b> <code>{codigo}</code>\n"
+        f"❓ <b>Motivo:</b> {motivo}"
+    )
+
+    await context.bot.send_message(chat_id=CANAL_ID, text=mensagem, parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Seu relato foi enviado. Obrigado!")
+    return ConversationHandler.END
+
+async def relatarerro_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Operação cancelada.")
+    return ConversationHandler.END
+
 # Execução do bot
 def main():
     app = Application.builder().token(token).build()
@@ -232,8 +265,19 @@ def main():
     app.add_handler(CommandHandler("fila", fila))
     app.add_handler(CommandHandler("historico", historico))
     app.add_handler(CommandHandler("historicoids", historicoids))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Comando /relatarerro com timeout
+    app.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("relatarerro", relatarerro_start)],
+        states={
+            RELATAR_CODIGO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_codigo)],
+            RELATAR_MOTIVO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_motivo)],
+        },
+        fallbacks=[CommandHandler("cancelar", relatarerro_cancel)],
+        conversation_timeout=120,
+    ))
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
 
 if __name__ == '__main__':
