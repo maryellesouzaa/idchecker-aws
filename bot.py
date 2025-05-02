@@ -166,7 +166,7 @@ async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ids_pendentes = cursor.fetchall()
 
     if not ids_pendentes:
-        await update.message.reply_text("✅ Nenhum ID pendente!")
+        await update.message.reply_text("✅ Nenhum ID pendente")
     else:
         resposta = "🕒 Fila de IDs pendentes:\n\n"
         for idx, (codigo,) in enumerate(ids_pendentes, start=1):
