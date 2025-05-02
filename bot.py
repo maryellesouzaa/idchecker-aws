@@ -1,7 +1,10 @@
 from dotenv import load_dotenv
 import os
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    filters, ContextTypes
+)
 from datetime import datetime
 import psycopg2
 import re
@@ -16,17 +19,21 @@ if not DATABASE_URL:
     DATABASE_URL = "postgresql://postgres:xYqoSUrBXewIYTfQkNYzsbIwJeRsMyKd@interchange.proxy.rlwy.net:19437/railway"
 
 ID_REGEX = r'\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b'
-ADMINS = set()
+USUARIOS_ADMIN_TEMP = set()
 CANAL_ID = -1002563145936
 SENHA_ADMIN = "0809"
-USUARIOS_ADMIN_TEMP = set()
-CODIGO, MOTIVO = range(2)
 
+# Conexão única reutilizável
 def get_db_connection():
     if not hasattr(get_db_connection, "conn"):
         get_db_connection.conn = psycopg2.connect(DATABASE_URL)
     return get_db_connection.conn
 
+# Início do bot
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.")
+
+# Mensagem de texto com ID
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.upper()
     user = update.effective_user
@@ -76,20 +83,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot iniciado! Envie os IDs dos produtos no formato AAA-BBB-CCC.\n")
+# Comando /admin
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args or args[0] != SENHA_ADMIN:
+        await update.message.reply_text("❌ Senha incorreta.")
+        return
 
+    user_id = update.effective_user.id
+    USUARIOS_ADMIN_TEMP.add(user_id)
+    await update.message.reply_text(
+        "🔐 Acesso administrativo concedido!\n\n"
+        "Comandos disponíveis:\n"
+        "/quantos - Ver total de IDs registrados\n"
+        "/addlink CÓDIGO LINK - Adicionar link ao código\n"
+        "/fila - Ver IDs pendentes\n"
+        "/historicoids - Ver histórico de todos os IDs"
+    )
+
+# Comando /quantos
 async def quantos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
+        await update.message.reply_text("❌ Sem permissão.")
         return
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM produto;")
     total = cursor.fetchone()[0]
-    await update.message.reply_text(f"📊 Atualmente existem {total} IDs registrados no banco de dados!")
+    await update.message.reply_text(f"📊 Existem {total} IDs registrados.")
     cursor.close()
 
+# Comando /addlink
 async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
         await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
@@ -121,13 +146,13 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=message_id
             )
         except:
-            await update.message.reply_text("⚠️ Não consegui responder à mensagem original, mas o link foi atualizado.")
+            await update.message.reply_text("⚠️ Link atualizado, mas não consegui responder à mensagem original.")
         await update.message.reply_text(f"✅ Link atualizado para o ID {codigo}!")
     else:
         await update.message.reply_text(f"❌ Código {codigo} não encontrado.")
-
     cursor.close()
 
+# Comando /fila
 async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -140,11 +165,11 @@ async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resposta = "🕒 Fila de IDs pendentes:\n\n"
         for idx, (codigo,) in enumerate(ids_pendentes, start=1):
             resposta += f"{idx}. 🆔 {codigo}\n"
-        resposta += "\n⏳ Aguarde a geração dos links!"
         await update.message.reply_text(resposta)
 
     cursor.close()
 
+# Comando /historico
 async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     conn = get_db_connection()
@@ -161,14 +186,16 @@ async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{idx}. 👤 {user_name}\n"
                 f"🆔 {codigo}\n"
                 f"🕒 {data_pedido.strftime('%Y-%m-%d')}\n"
-                f"🔗 {link}\n\n"
+                f"🔗 {link or 'Nenhum link'}\n\n"
             )
         await update.message.reply_text(resposta)
 
     cursor.close()
 
+# Comando /historicoids
 async def historicoids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in USUARIOS_ADMIN_TEMP:
+        await update.message.reply_text("❌ Sem permissão.")
         return
 
     conn = get_db_connection()
@@ -191,32 +218,18 @@ async def historicoids(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 1 or context.args[0] != SENHA_ADMIN:
-        await update.message.reply_text("❌ Senha incorreta.")
-        return
-
-    user_id = update.effective_user.id
-    USUARIOS_ADMIN_TEMP.add(user_id)
-    await update.message.reply_text(
-        "🔐 Acesso administrativo concedido!\n\n"
-        "Comandos disponíveis:\n"
-        "/quantos - Ver total de IDs registrados\n"
-        "/addlink CÓDIGO LINK - Adicionar link ao código\n"
-        "/fila - Ver IDs pendentes\n"
-        "/historicoids - Ver histórico de todos os IDs"
-    )
-
+# Execução do bot
 def main():
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CommandHandler("quantos", quantos))
     app.add_handler(CommandHandler("addlink", addlink))
     app.add_handler(CommandHandler("fila", fila))
     app.add_handler(CommandHandler("historico", historico))
     app.add_handler(CommandHandler("historicoids", historicoids))
-    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling()
 
