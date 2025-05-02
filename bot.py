@@ -165,15 +165,13 @@ async def fila(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resposta = "🕒 Fila de IDs pendentes:\n\n"
         for idx, (codigo,) in enumerate(ids_pendentes, start=1):
             resposta += f"{idx}. 🆔 {codigo}\n"
+        resposta += "\n⏳ Aguarde a geração dos links!"
         await update.message.reply_text(resposta)
 
     cursor.close()
 
 async def historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in USUARIOS_ADMIN_TEMP:
-        await update.message.reply_text("❌ Sem permissão.")
-        return
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -220,6 +218,46 @@ async def historicoids(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cursor.close()
 
+async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    # Verifica se é admin
+    if user_id not in USUARIOS_ADMIN_TEMP:
+        await update.message.reply_text("❌ Sem permissão.")
+        return
+
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("❗ Use: /mensagem <código> <mensagem>")
+        return
+
+    codigo = args[0]
+    mensagem_texto = " ".join(args[1:])
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Supondo que você tenha armazenado os dados da mensagem original
+    cursor.execute("SELECT chat_id, message_id FROM produto WHERE codigo = %s", (codigo,))
+    resultado = cursor.fetchone()
+
+    if not resultado:
+        await update.message.reply_text("❌ Código não encontrado.")
+    else:
+        chat_id, message_id = resultado
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"📩 Resposta da equipe:\n\n{mensagem_texto}",
+                reply_to_message_id=message_id
+            )
+            await update.message.reply_text("✅ Mensagem enviada com sucesso.")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Erro ao enviar: {e}")
+
+    cursor.close()
+    conn.close()
+
 async def relatarerro_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🆔 Informe o código do ID com problema:")
     return RELATAR_CODIGO
@@ -256,35 +294,39 @@ async def limpar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM produto;")
+
+    cursor.execute("SELECT COUNT(*) FROM produto WHERE link IS NULL;")
+    pendentes = cursor.fetchone()[0]
+    cursor.execute("DELETE FROM produto WHERE link IS NULL;")
     conn.commit()
-    await update.message.reply_text("✅ Todos os dados foram limpos.")
+    await update.message.reply_text(f"🧹 {pendentes} IDs pendentes foram removidos com sucesso.")
     cursor.close()
 
 def main():
-    app = Application.builder().token(token).build()
+    application = Application.builder().token(token).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("quantos", quantos))
-    app.add_handler(CommandHandler("addlink", addlink))
-    app.add_handler(CommandHandler("fila", fila))
-    app.add_handler(CommandHandler("historico", historico))
-    app.add_handler(CommandHandler("historicoids", historicoids))
-    app.add_handler(CommandHandler("limpar", limpar))
-
-    app.add_handler(ConversationHandler(
+    conv_handler = ConversationHandler(
         entry_points=[CommandHandler("relatarerro", relatarerro_start)],
         states={
             RELATAR_CODIGO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_codigo)],
-            RELATAR_MOTIVO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_motivo)]
+            RELATAR_MOTIVO: [MessageHandler(filters.TEXT & ~filters.COMMAND, relatarerro_motivo)],
         },
         fallbacks=[CommandHandler("cancelar", relatarerro_cancel)],
-    ))
+    )
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin))
+    application.add_handler(CommandHandler("quantos", quantos))
+    application.add_handler(CommandHandler("addlink", addlink))
+    application.add_handler(CommandHandler("fila", fila))
+    application.add_handler(CommandHandler("historico", historico))
+    application.add_handler(CommandHandler("historicoids", historicoids))
+    application.add_handler(CommandHandler("mensagem", mensagem))
+    application.add_handler(CommandHandler("limpar", limpar))
+    application.add_handler(conv_handler)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    app.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
